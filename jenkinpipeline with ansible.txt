@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('clone code from scm') {
+            steps {
+                echo 'clone code from github'
+                git <fill with git repo link >
+            }
+        }
+
+        stage('Build WAR') {
+            steps {
+                echo 'Building the WAR file...'
+                sh 'mvn clean package'  
+            }
+        }
+
+        stage('Send WAR to Ansible Server') {
+            steps {
+                echo 'Copying WAR file to Ansible Server...'
+                sshagent (credentials: ['ansible-server-key']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ansible@ansible-server ip "mkdir -p /tmp/deploy"
+                        scp -o StrictHostKeyChecking=no target/app.war ansible@ansible-server ip:/tmp/deploy/
+                    """
+                }
+            }
+        }
+
+        stage('Run Ansible Playbook') {
+            steps {
+                echo 'Executing Ansible Playbook on Ansible Server...'
+                sshagent (credentials: ['ansible-server-key']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ansible@ansible-server ip "ansible-playbook /home/ansible/deploy_app.yml "
+                    """
+                }
+            }
+        }
+    }
+}
+
+
+
+
+Ansible Playbookfile
+-------------------
+
+deploy_app.yml
+
+---
+- hosts: app_servers
+  tasks:
+    - name: Copy WAR file
+      copy:
+        src: /tmp/deploy/app.war
+        dest: /opt/tomcat/webapps/app.war
+        mode: '0644'
+
+    - name: Restart Tomcat
+      service:
+        name: tomcat
+        state: restarted
+
